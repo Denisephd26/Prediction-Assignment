@@ -1,0 +1,121 @@
+---
+settitle: Machine Learning Prediction Assignment
+author: "Denise Wilson"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installed libraries and Download Data
+
+```{r echo=TRUE, results='hide'}
+library(caret)
+library(AppliedPredictiveModeling)
+library(ggplot2)
+library(corrplot)
+
+traindata = read.csv("~/Coursera R courses/pml-training.csv")
+testdata = read.csv("~/Coursera R courses/pml-testing.csv")
+```
+
+Next look at the structure of the training data.
+```{r}
+str(traindata)
+```
+
+A number of columns have no information, so those columns are removed as well as the first 7 columns which are not about any movement or exercise.
+```{r echo=TRUE}
+colname <-colnames(traindata)[!colSums(is.na(traindata))>0]
+colname <- colname[8:93]
+cleantrain <-traindata[colname]
+```
+
+Finally we remove the variables which are character class.
+```{r echo=TRUE}
+numeric <- cleantrain[sapply(cleantrain,is.numeric)]
+data <- cbind(numeric,classe=traindata$classe)
+```
+
+Now we set testdata with same variables:
+```{r echo=TRUE}
+colname <-colnames(data)
+validdata <-testdata[colname[-53]]
+```
+
+Next we set the seed equal to 5270 and pull our train and test samples.
+```{r echo=TRUE}
+set.seed(5270)
+inTrain = createDataPartition(data$classe, p = 0.7)[[1]]
+training = data[ inTrain,]
+testing = data[-inTrain,]
+```
+
+Make sure classe is a factor in the testing group so crossvalidation can occur.
+```{r echo}
+testing$classe <- as.factor(testing$classe)
+```
+
+## Look for correlated predictors
+```{r}
+cormatrix <- cor(training[,-53])
+M<-abs(cormatrix)
+diag(M)<-0
+which(M>0.8,arr.ind=T)
+```
+
+This suggests the highly correlated variables are:
+gyros_arm_x and gyros_arm_y; accel_arm_x and magnet_arm_x; magnet_arm_y and magnet_arm_z; accel_dumbbell_x and pitch_dumbbell; accel_dumbbell_z and yaw_dumbbell.
+
+Here is a plot of the correlations:
+```{r echo=FALSE, warning=FALSE}
+corrplot(cormatrix,order="FPC",method="color",type="upper")
+```
+
+## Fit models
+
+The models we will fit are rf, gbm, and lda.
+
+### Random Forest model
+```{r echo=TRUE}
+controlRF <-trainControl(method="cv",number=3)
+modFit1 <- train(classe~.,data=training,method="rf",trControl=controlRF)
+modFit1$finalModel
+predRF <- predict(modFit1,newdata=testing)
+cmRF <- confusionMatrix(testing$classe,predRF)
+cmRF
+```
+
+### Gradient Boosted Model
+```{r echo=TRUE}
+controlgbm <- trainControl(method="cv",number=3)
+modFit2 <- train(classe ~., method="gbm", data=training,trControl=controlgbm,verbose=FALSE)
+modFit2$finalModel
+predgbm <- predict(modFit2,newdata=testing)
+confusionMatrix(testing$classe,predgbm)
+```
+
+### Linear Discriminant Analysis 
+```{r echo=TRUE}
+controllda <-trainControl(method="cv",number=3)
+modFit3 <- train(classe ~., method="lda", data=training,trControl=controllda,verbose=FALSE)
+predlda <- predict(modFit3,newdata=testing)
+confusionMatrix(testing$classe,predlda)
+```
+
+## Conclusion
+Based upon this output, the random forest provides the best model for predicting classe. See the plot below with predicted versus actual
+```{r echo=FALSE}
+plot(cmRF$table,main=paste("Random Forest Model, Accuracy=",round(cmRF$overall['Accuracy'],4)))
+```
+
+## Predicted values 
+Now we will find the predicted values for the testing data.
+```{r echo=TRUE}
+predict(modFit1,newdata=validdata)
+```
+
